@@ -12,8 +12,33 @@ import {
   Text,
 } from '@chakra-ui/react'
 import { FaPlay } from 'react-icons/fa'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import * as zod from 'zod'
+
+const newCycleFormValidationSchema = zod.object({
+  task: zod.string().min(1, 'Informe a tarefa'),
+  minutesAmount: zod.number().min(5).max(60),
+})
+
+type newCycleFormData = zod.infer<typeof newCycleFormValidationSchema>
 
 export function Home() {
+  const { register, handleSubmit, watch, reset } = useForm<newCycleFormData>({
+    resolver: zodResolver(newCycleFormValidationSchema),
+    defaultValues: {
+      task: '',
+      minutesAmount: 0,
+    },
+  })
+
+  const handleCreateNewCyclo = (data: newCycleFormData) => {
+    console.log(data)
+    reset()
+  }
+
+  const task = watch('task')
+  const isSubmitDisable = !task
   return (
     <Box
       flex="1"
@@ -24,6 +49,7 @@ export function Home() {
     >
       <Box
         as="form"
+        onSubmit={handleSubmit(handleCreateNewCyclo)}
         display="flex"
         flexDirection="column"
         alignItems="center"
@@ -42,6 +68,7 @@ export function Home() {
             Vou trabalhar em
           </FormLabel>
           <Input
+            {...register('task')}
             variant="flushed"
             placeholder="Dê um nome para o seu projeto"
             id="task"
@@ -60,8 +87,8 @@ export function Home() {
             durante
           </FormLabel>
           <NumberInput
+            {...register('minutesAmount', { valueAsNumber: true })}
             variant="flushed"
-            defaultValue="00"
             step={5}
             min={5}
             max={60}
@@ -130,7 +157,9 @@ export function Home() {
         </Flex>
 
         <IconButton
+          disabled={isSubmitDisable}
           width="100%"
+          type="submit"
           colorScheme="green"
           aria-label="Começar a contar"
           size="lg"
