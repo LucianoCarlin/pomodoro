@@ -1,30 +1,47 @@
-import {
-  Box,
-  Flex,
-  FormLabel,
-  IconButton,
-  Input,
-  NumberDecrementStepper,
-  NumberIncrementStepper,
-  NumberInput,
-  NumberInputField,
-  NumberInputStepper,
-  Text,
-} from '@chakra-ui/react'
-import { FaPlay } from 'react-icons/fa'
-import { useForm } from 'react-hook-form'
+/* eslint-disable react-hooks/exhaustive-deps */
+import { createContext, useEffect, useState } from 'react'
+import { Box, Flex } from '@chakra-ui/react'
+import { FaPlay, FaHandPaper } from 'react-icons/fa'
+import { FormProvider, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as zod from 'zod'
 
+import { CountDownHome } from './CountDownHome'
+import { differenceInSeconds } from 'date-fns'
+import { Separator } from './Separator'
+import { ButtonStartStop } from './ButtonStartStop'
+import { NewCycleForm } from './NewCycleForm'
+
 const newCycleFormValidationSchema = zod.object({
   task: zod.string().min(1, 'Informe a tarefa'),
-  minutesAmount: zod.number().min(5).max(60),
+  minutesAmount: zod.number().min(1).max(60),
 })
 
 type newCycleFormData = zod.infer<typeof newCycleFormValidationSchema>
 
+interface CycleProps {
+  id: string
+  task: string
+  minutesAmount: number
+  startDate: Date
+  interruptedDate?: Date
+  finishedDate?: Date
+}
+
+interface CyclesContextProps {
+  activeCycle: CycleProps | undefined
+  activeCycleId: string | null
+  markCurrentCycleAsFinished: () => void
+}
+
+export const CyclesContext = createContext({} as CyclesContextProps)
+
 export function Home() {
-  const { register, handleSubmit, watch, reset } = useForm<newCycleFormData>({
+  const [cycles, setCycles] = useState<CycleProps[]>([])
+  const [activeCycleId, setActiveCycleId] = useState<string | null>(null)
+  const [amountSecondsPassed, setAmountSecondsPassed] = useState(0)
+
+  const newCycleForm = useForm<newCycleFormData>({
     resolver: zodResolver(newCycleFormValidationSchema),
     defaultValues: {
       task: '',
@@ -32,10 +49,87 @@ export function Home() {
     },
   })
 
+  const { handleSubmit, reset, watch } = newCycleForm
+
+  const activeCycle = cycles.find((cycle) => cycle.id === activeCycleId)
+  const totalSeconds = activeCycle ? activeCycle.minutesAmount * 60 : 0
+
+  const markCurrentCycleAsFinished = () => {
+    setCycles((state) =>
+      state.map((cycle) => {
+        if (cycle.id === activeCycleId) {
+          return { ...cycle, finishedDate: new Date() }
+        } else {
+          return cycle
+        }
+      }),
+    )
+  }
+
+  useEffect(() => {
+    let interval: number
+    if (activeCycle) {
+      interval = setInterval(() => {
+        const secondsDifference = differenceInSeconds(
+          new Date(),
+          activeCycle.startDate,
+        )
+        if (secondsDifference >= totalSeconds) {
+          markCurrentCycleAsFinished()
+          setAmountSecondsPassed(totalSeconds)
+          clearInterval(interval)
+        } else {
+          setAmountSecondsPassed(secondsDifference)
+        }
+      }, 1000)
+    }
+    return () => {
+      clearInterval(interval)
+    }
+  }, [activeCycle, totalSeconds, activeCycleId, markCurrentCycleAsFinished])
+
   const handleCreateNewCyclo = (data: newCycleFormData) => {
-    console.log(data)
+    const id = String(new Date().getTime())
+    const newCycle: CycleProps = {
+      id,
+      task: data.task,
+      minutesAmount: data.minutesAmount,
+      startDate: new Date(),
+    }
+    setCycles((state) => [...state, newCycle])
+    setActiveCycleId(id)
+    setAmountSecondsPassed(0)
     reset()
   }
+
+  const handleInterruptedCyclo = () => {
+    setCycles((state) =>
+      state.map((cycle) => {
+        if (cycle.id === activeCycleId) {
+          return { ...cycle, interruptedDate: new Date() }
+        } else {
+          return cycle
+        }
+      }),
+    )
+    setActiveCycleId(null)
+  }
+
+  const currentSeconds = activeCycle ? totalSeconds - amountSecondsPassed : 0
+
+  const minutesAmount = Math.floor(currentSeconds / 60)
+  const secondsAmount = currentSeconds % 60
+
+  const minutes = String(minutesAmount).padStart(2, '0')
+  const seconds = String(secondsAmount).padStart(2, '0')
+
+  useEffect(() => {
+    if (activeCycle) {
+      document.title = `${minutes}:${seconds}`
+    } else {
+      document.title = `${minutes}:${seconds}`
+    }
+  }, [minutes, seconds, activeCycle])
 
   const task = watch('task')
   const isSubmitDisable = !task
@@ -55,117 +149,39 @@ export function Home() {
         alignItems="center"
         gap="3.5rem"
       >
-        <Flex
-          width="100%"
-          alignItems="center"
-          justifyContent="center"
-          gap="0.5rem"
-          color="gray.100"
-          fontSize="1.125rem"
-          fontWeight="bold"
+        <CyclesContext.Provider
+          value={{ activeCycle, activeCycleId, markCurrentCycleAsFinished }}
         >
-          <FormLabel htmlFor="task" width="15rem" mt="0.4rem">
-            Vou trabalhar em
-          </FormLabel>
-          <Input
-            {...register('task')}
-            variant="flushed"
-            placeholder="Dê um nome para o seu projeto"
-            id="task"
-            focusBorderColor="green.800"
-            list="task-suggestion"
-          />
-
-          <datalist id="task-suggestion">
-            <option value="Projeto 1" />
-            <option value="Projeto 2" />
-            <option value="Projeto 3" />
-            <option value="Projeto 4" />
-          </datalist>
-
-          <FormLabel htmlFor="minutesAmount" mt="0.4rem">
-            durante
-          </FormLabel>
-          <NumberInput
-            {...register('minutesAmount', { valueAsNumber: true })}
-            variant="flushed"
-            step={5}
-            min={5}
-            max={60}
-            width="10rem"
-            focusBorderColor="green.800"
-          >
-            <NumberInputField borderColor="gray.100" boxShadow="none" />
-            <NumberInputStepper>
-              <NumberIncrementStepper
-                _hover={{
-                  color: 'green.800',
-                }}
-              />
-              <NumberDecrementStepper
-                _hover={{
-                  color: 'green.800',
-                }}
-              />
-            </NumberInputStepper>
-          </NumberInput>
-          <FormLabel mt="0.4rem">minutos</FormLabel>
-        </Flex>
-        <Flex fontSize="10rem" lineHeight="8rem" color="gray.100" gap="1rem">
-          <Text
-            bgColor="gray.700"
-            paddingX="1rem"
-            paddingY="2rem"
-            borderRadius="8px"
-          >
-            0
-          </Text>
-          <Text
-            bgColor="gray.700"
-            paddingX="1rem"
-            paddingY="2rem"
-            borderRadius="8px"
-          >
-            0
-          </Text>
-          <Flex
-            width="4rem"
-            color="green.500"
-            paddingY="2rem"
-            borderRadius="8px"
-            overflow="hidden"
-            justifyContent="center"
-          >
-            :
+          <FormProvider {...newCycleForm}>
+            <NewCycleForm />
+          </FormProvider>
+          <Flex fontSize="10rem" lineHeight="8rem" color="gray.100" gap="1rem">
+            <CountDownHome>{minutes[0]}</CountDownHome>
+            <CountDownHome>{minutes[1]}</CountDownHome>
+            <Separator />
+            <CountDownHome>{seconds[0]}</CountDownHome>
+            <CountDownHome>{seconds[1]}</CountDownHome>
           </Flex>
-          <Text
-            bgColor="gray.700"
-            paddingX="1rem"
-            paddingY="2rem"
-            borderRadius="8px"
-          >
-            0
-          </Text>
-          <Text
-            bgColor="gray.700"
-            paddingX="1rem"
-            paddingY="2rem"
-            borderRadius="8px"
-          >
-            0
-          </Text>
-        </Flex>
+        </CyclesContext.Provider>
 
-        <IconButton
-          disabled={isSubmitDisable}
-          width="100%"
-          type="submit"
-          colorScheme="green"
-          aria-label="Começar a contar"
-          size="lg"
-          icon={<FaPlay />}
-          title="Começar"
-        />
+        {activeCycle ? (
+          <ButtonStartStop
+            onClick={handleInterruptedCyclo}
+            aria-label="interromper"
+            color="red"
+            title="interromper"
+            icon={<FaHandPaper />}
+          />
+        ) : (
+          <ButtonStartStop
+            disabled={isSubmitDisable}
+            type="submit"
+            color="green"
+            aria-label="Começar"
+            icon={<FaPlay />}
+            title="Começar"
+          />
+        )}
       </Box>
     </Box>
   )
